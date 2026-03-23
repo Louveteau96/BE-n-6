@@ -1,9 +1,11 @@
 import serial
 
 #Connexion port série
-def connexion(port_serie):
+def connexion(port_serie,id):
     port_serie = "Com3"
+    id = "123"
     ser = serial.Serial(port_serie,baudrate=9600,timeout=10)
+    ser.write(id)
     return ser
 
 
@@ -29,5 +31,18 @@ def recuperation_donnee(ser):
     ser.write("lrec 1 1") #l'instrument envoi 1 enregistrement
     #Ce qu'on recoit
     #lrec 1 1 heure date flag o3 hio3 cellA cellB benchT lampT o3lamp flowA, flowB, pression
+    donnees = ser.readline()
+    print("Données lues : " + donnees)
+    
+def close_connexion(ser):
+    ser.close()
 
+#Questions :
+#Est-ce que le write(id) doit se faire à chaque lrec ou juste une initialisation
+def main():
+    ser = connexion("Com3","123")
+    initialisation(ser)
+    recuperation_donnee(ser)
+    close_connexion(ser)
 
+main()
