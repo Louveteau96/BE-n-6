@@ -4,12 +4,26 @@ import socket
 #SOCK_DGRAM pour udp (rapidité pas de vérif contrairement à tcp)
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-port = 5000
-ip = "192.00" #IP de la machine
+#cf doc page:206 pour le port
+port = 9880
+ip = "192.00" #IP de la machine pour l'instant je sais pas
 adress = (ip,port)
 s.settimeout(10)
+id = bytes([177])
 
-#peut être il faut faire un .encode sur "O2"
-#et du coup .decode sur s.recv
-s.sendto("O2\n",adress)
-print(s.recv(1024))
+
+def commande(cmd,socket,adress):
+    cmd = cmd+"\n"
+    if id == bytes([0]):
+        socket.sendto(cmd.encode('ascii'), adress)
+    else:
+        socket.sendto(id+cmd.encode('ascii'), adress)
+
+
+def main():
+    commande("O2",s,adress)
+    reponse = s.recv(1024).decode('ascii')
+    print(reponse)
+
+main()
+
