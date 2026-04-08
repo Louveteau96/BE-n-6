@@ -1,61 +1,70 @@
 import serial
+import time
 
-#Connexion port série
+port = "/dev/ttyUSB0"  # Remplacez par le port série de votre système (ex: "COM3" sur Windows)
+baudrate = 9600       # Débit en bauds (vérifiez la documentation de l'analyseur)
+id = 49 + 128
+a = chr(id)
+setmode = "set mode remote"
+setmode_recuperation = "set mode remote"
+lrec = "lrec 1 1"
+lrec_recuperation = "flags"
+o3 = "o3"
+o3_recuperation = "o3"
+precedent_expectation = "null"
 
-#Pour l'id cf page:206
-id = bytes([177])
-port = "/dev/ttyUSB0"
 
-def connexion(port_serie,id):
-    port = port_serie
-    ser = serial.Serial(port,baudrate=9600,timeout=10)
-    return ser
+def envoie_commande(ser,cmd):
+    commande = f"{a}{cmd}\r\n"
+    nb = ser.write(commande.encode('utf-8'))
+    if nb==0:
+        raise ValueError("envoie vide")
 
-#commande met lui même un \n si la commande donnée en a déjà un normalement ça ne pose pas probleme
-def commande(cmd,ser):
-    cmd = cmd+"\n"
-    if id==bytes([0]):
-        return ser.write(cmd.encode('ascii'))
+def lire_reponse(ser,expected_content):
+    reponse=""
+    i=0
+    while (len(reponse)==0) and (i<100):
+        time.sleep(0.1)
+        reponse = ser.readline().decode('utf-8')
+        #Ajout du if pour le contenu
+        split_answer = reponse.split()
+        #Si la réponse attendue est la reponse ou si une partie de la réponse est expected_content
+        #Si la réponse contient la même chose qu'avant on refuse
+        #Exemple pour o3 il y est dans lrec mais pour lrec on veut flag qui n'est pas présent dans la réponse de o3
+        if expected_content in reponse.lower() or expected_content in split_answer and not(precedent_expectation in split_answer):
+            i += 100
+            #On attribue expected_content à precedent_expectation
+            precedent_expectation = expected_content
+        i += 1
+    if(i<100):
+        print(f"réponse reçu : {reponse}")
     else:
-        return ser.write(id + cmd.encpde('ascii'))
+        print("aucun message reçu")
+    return reponse
 
-#Initialistation de l'appareil
-def initialisation(ser):
-    #set mode remote pour pouvoir interagir avec l'appareil
-    commande("set mode remote",ser)
-    reponse = ser.readline().decode('ascii')
-    if(reponse != "set mode remote ok"):
-        print("Initialisation échouée remote")
-        print("réponse : " + reponse)
-        return
-    
-    #gas unit en ppb
-    commande("set gas unit ppb")
-    reponse = ser.readline()
-    if(reponse != "set gas unit ppb ok"):
-        print("Initialisation échouée ppb")
-        print("réponse : " + reponse)
-        return
-    return
+ser = serial.Serial(port,baudrate=baudrate,timeout=1)
 
-#Envoi et réception des commandes
-def recuperation_donnee(ser):
-    commande("lrec 1 1",ser) #l'instrument envoi 1 enregistrement
-    #Ce qu'on recoit
-    #lrec 1 1 heure date flag o3 hio3 cellA cellB benchT lampT o3lamp flowA, flowB, pression
-    donnees = ser.readline().decode('ascii')
-    print("Données lues : " + donnees)
-    
-def close_connexion(ser):
-    ser.close()
+#cmd = f"{a}{setmode}\r\n"
 
+#nb = ser.write(cmd.encode('utf-8'))
 
-def main():
-    # ser = connexion("Com3","123")
-    # initialisation(ser)
-    # recuperation_donnee(ser)
-    # close_connexion(ser)
-    id = bytes([177])
-    print (id)
+envoie_commande(ser,setmode)
 
-main()
+#reponse = ser.readline().decode('utf-8')
+#print(reponse)
+
+lire_reponse(ser,setmode_recuperation)
+
+time.sleep(1)
+
+#cmd2 = f"{a}lrec\r\n"
+#ser.write(cmd2.encode('utf-8'))
+envoie_commande(ser,lrec)
+time.sleep(1)
+
+lire_reponse(ser,lrec_recuperation)
+#analyse = ser.readline().decode('utf-8')
+#print(analyse)
+
+envoie_commande(ser,o3)
+lire_reponse(ser,o3_recuperation)
