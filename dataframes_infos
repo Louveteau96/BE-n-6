@@ -17,6 +17,7 @@ def ajouter_infos (dataframe,infos):
             return dataframe
         case _ :
             print("les infos ne correspondent pas au format : " + infos)
+            return dataframe
 
 def main():
     #Comment est fait le dataframe pour l'instant
