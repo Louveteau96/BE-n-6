@@ -1,0 +1,49 @@
+import pandas as pd
+
+def ajouter_infos (dataframe,infos):
+    splited_infos = infos.split()
+    match splited_infos[0]:
+        case "lrec" :
+            new_row = pd.DataFrame({"o3" : [splited_infos[6]],
+                                    "cellA" : [splited_infos[8]],
+                                    "cellB" : [splited_infos[9]],
+                                    "benchT" : [splited_infos[10]],
+                                    "lampT" : [splited_infos[11]],
+                                    "o3lamp" : [splited_infos[12]],
+                                    "flowA" : [splited_infos[13]],
+                                    "flowB" : [splited_infos[14]],
+                                    "pression" : [splited_infos[15]]})
+            dataframe = pd.concat([dataframe,new_row], ignore_index=True)
+            return dataframe
+        case _ :
+            print("les infos ne correspondent pas au format : " + infos)
+
+def main():
+    #Comment est fait le dataframe pour l'instant
+    data = ({"o3" : [0],
+            "cellA" : [0],
+            "cellB" : [0],
+            "benchT" : [0],
+            "lampT" : [0],
+            "o3lamp" : [0],
+            "flowA" : [0],
+            "flowB" : [0],
+            "pression" : [0]})
+    df = pd.DataFrame()
+
+    infos = "lrec 1 1 09:53 03-02-26 0C105004 0.000 0.000 0 7 20.2 46.5 63.6 0.754 0.721 747.0"
+    df = ajouter_infos(df,infos)
+    print(df)
+    df.to_csv("resultats.csv",index=False)
+
+main()
+
+#lrec 1 1 09:53 03-02-26 0C105004 0.000 0.000 0 7 20.2 46.5 63.6 0.754 0.721 747.0
+#lrec 1 1 heure date flag o3 hio3 cellA cellB benchT lampT o3lamp flowA, flowB, pression
+
+#hi03 est sans intérêt. Date et heures également. Les autres paramètres m'intéressent.
+#cellA et cellB sont les fréquences des lampes A et B. 
+#benchT : temperature du banc
+#lampT : temperature de la lampe UV
+#flowA et flowB les débits A et B
+#pression la pression du capteur.
