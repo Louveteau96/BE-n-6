@@ -6,24 +6,24 @@ s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 #cf doc page:206 pour le port
 port = 9880
-ip = "192.00" #IP de la machine pour l'instant je sais pas
+#Pour tester mettre l'adresse suivante : "127.0.0.1"
+ip = "192.168.1.2" #IP de la machine pour l'instant je sais pas
 adress = (ip,port)
 s.settimeout(10)
-id = bytes([177])
+id = 49 + 128
+id = chr(id)
 
 
 def commande(cmd,socket,adress):
-    cmd = cmd+"\n"
-    if id == bytes([0]):
-        socket.sendto(cmd.encode('ascii'), adress)
-    else:
-        socket.sendto(id+cmd.encode('ascii'), adress)
+    cmd = f"{id}{cmd}\r\n"
+    socket.sendto(cmd.encode('utf-8'), adress)
 
 
 def main():
     commande("O2",s,adress)
-    reponse = s.recv(1024).decode('ascii')
+    reponse = s.recv(1024).decode('utf-8')
     print(reponse)
+    s.close()
 
 main()
 
