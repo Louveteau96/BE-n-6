@@ -1,3 +1,6 @@
+import datetime
+import os
+
 import pandas as pd
 
 def ajouter_infos (dataframe,infos):
@@ -19,23 +22,38 @@ def ajouter_infos (dataframe,infos):
             print("les infos ne correspondent pas au format : " + infos)
             return dataframe
 
-def main():
+def init_csv (filePath):
     #Comment est fait le dataframe pour l'instant
-    data = ({"o3" : [0],
-            "cellA" : [0],
-            "cellB" : [0],
-            "benchT" : [0],
-            "lampT" : [0],
-            "o3lamp" : [0],
-            "flowA" : [0],
-            "flowB" : [0],
-            "pression" : [0]})
-    df = pd.DataFrame()
+    # Créer un DataFrame avec les bonnes colonnes
+    df = pd.DataFrame(columns=[
+        "o3", "cellA", "cellB", "benchT", "lampT",
+        "o3lamp", "flowA", "flowB", "pression"
+    ])
 
+    # Créer le dossier s'il n'existe pas
+    os.makedirs("records", exist_ok=True)
+    df.to_csv(filePath,index=False)
+
+
+
+def main():
+    #Création du csv
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+    filePath = f"records/{timestamp}_resultat.csv"
+    init_csv(filePath)
+
+    #Ajout des infos
     infos = "lrec 1 1 09:53 03-02-26 0C105004 0.000 0.000 0 7 20.2 46.5 63.6 0.754 0.721 747.0"
-    df = ajouter_infos(df,infos)
+    df = ajouter_infos(pd.read_csv(filePath),infos)
+    df.to_csv(filePath,index=False)
+    
+    infos = "lrec 1 1 09:53 03-02-26 0C105004 0.000 0.000 0 7 20.2 46.5 63.6 0.754 0.721 748.0"
+
+    #Il faut faire comme ça et ça marche
+    #un pd.read_csv
+    df = ajouter_infos(pd.read_csv(filePath),infos)
+    df.to_csv(filePath,index=False)
     print(df)
-    df.to_csv("resultats.csv",index=False)
 
 main()
 
