@@ -119,12 +119,12 @@ def connexion(port : str, baudrate : int , id_analyseur : int) -> int:
 
     reponse = lire_reponse(ser)
 
-    while(reponse != "set mode remote ok" or i < 10):
+    while(reponse != "set mode remote ok" and i < 10):
 
         reponse = lire_reponse(ser)
         i = i+1
     
-    if(i<=10):
+    if(i>=10):
         raise ValueError("set mode remote échoué")
         return False
     else:
