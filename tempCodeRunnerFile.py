@@ -1,0 +1,1 @@
+print(f"Erreur connexion serial: {e}")
