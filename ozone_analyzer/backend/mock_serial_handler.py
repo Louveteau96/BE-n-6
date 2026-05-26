@@ -59,8 +59,9 @@ class MockSerialHandler:
             "lrec", "1", "1",
             heure, date,
             "0",                        # flag
-            "0.000",                     # hio3    
+                
             f"{o3:.2f}",                # o3        → valeurs[3]
+            "0.000",                     # hio3
             f"{cellA:.2f}",             # cellA     → valeurs[4]
             f"{cellB:.2f}",             # cellB     → valeurs[5]
             f"{benchT:.2f}",            # benchT    → valeurs[6]
