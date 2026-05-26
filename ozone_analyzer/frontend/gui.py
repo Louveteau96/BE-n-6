@@ -9,17 +9,22 @@ the thread-safety hazards of writing to ``self.df`` from a worker while
 the main thread is reading from it.
 """
 
+import os
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 from queue import Queue, Empty
+from datetime import datetime
 
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 from .plots import create_single_plot, create_dual_plot
+from .components import Tooltip
 from backend.data_processor import process_raw_data
 from config import PLOT_CONFIGS
+
+RECORD_DIR = "record"
 
 
 class GraphApp:
@@ -31,11 +36,17 @@ class GraphApp:
         self.max_points = max_points
         self.df = pd.DataFrame()
 
+        # Auto-save state
+        self._autosave_path: str | None = None   # set on first data received
+
         self.root.title("Analyseur Ozone - Temps Réel")
         self.root.geometry("1250x820")
 
         self.figures: dict[str, tuple] = {}
         self.canvases: dict[str, FigureCanvasTkAgg] = {}
+
+        # Ensure the record folder exists
+        os.makedirs(RECORD_DIR, exist_ok=True)
 
         self.create_interface()
         self.schedule_poll()
@@ -64,10 +75,28 @@ class GraphApp:
                 create_single_plot(ax, self.df, config)
             canvas.draw()
 
+        # ---- Bottom button bar ------------------------------------------
         btn_frame = ttk.Frame(self.root)
         btn_frame.pack(fill="x", padx=10, pady=8)
-        ttk.Button(btn_frame, text="🔄 Rafraîchir",
-                   command=self.refresh_all).pack(side="right")
+
+        # Status label — shows the autosave path once active
+        self._status_var = tk.StringVar(value="En attente de données...")
+        ttk.Label(btn_frame, textvariable=self._status_var,
+                  foreground="gray").pack(side="left")
+
+        # Refresh button
+        btn_refresh = ttk.Button(
+            btn_frame, text="🔄 Rafraîchir", command=self.refresh_all
+        )
+        btn_refresh.pack(side="right", padx=(6, 0))
+        Tooltip(btn_refresh, "Redessiner tous les graphiques manuellement")
+
+        # Manual save button
+        btn_save = ttk.Button(
+            btn_frame, text="💾 Sauvegarder CSV", command=self.save_csv
+        )
+        btn_save.pack(side="right", padx=(6, 0))
+        Tooltip(btn_save, "Sauvegarder les données dans un fichier CSV personnalisé")
 
     # ---- Queue polling on the Tk event loop -----------------------------
     def schedule_poll(self) -> None:
@@ -90,9 +119,58 @@ class GraphApp:
             )
             if len(self.df) > self.max_points:
                 self.df = self.df.iloc[-self.max_points:].reset_index(drop=True)
+
+            self._autosave()
             self.refresh_all()
 
         self.schedule_poll()
+
+    # ---- Auto-save ------------------------------------------------------
+    def _autosave(self) -> None:
+        """Save to record/<start_datetime>.csv every time new data arrives.
+        The filename is fixed at the moment the first data point is received.
+        """
+        # First data point — create the filename now
+        if self._autosave_path is None:
+            filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
+            self._autosave_path = os.path.join(RECORD_DIR, filename)
+            self._status_var.set(f"Enregistrement : {self._autosave_path}")
+
+        try:
+            self.df.to_csv(self._autosave_path, index=False)
+        except Exception as e:
+            print(f"Autosave error: {e}")
+
+    # ---- Manual save button ---------------------------------------------
+    def save_csv(self) -> None:
+        """Open a file dialog and save the current DataFrame to a chosen path."""
+        if self.df.empty:
+            messagebox.showwarning(
+                "Aucune donnée",
+                "Pas de données à sauvegarder.\nLancez l'acquisition d'abord.",
+            )
+            return
+
+        default_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
+        path = filedialog.asksaveasfilename(
+            title="Sauvegarder les données",
+            defaultextension=".csv",
+            initialdir=RECORD_DIR,
+            initialfile=default_name,
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+
+        if not path:      # user cancelled
+            return
+
+        try:
+            self.df.to_csv(path, index=False)
+            messagebox.showinfo(
+                "Sauvegarde réussie",
+                f"{len(self.df)} lignes enregistrées.\n{path}",
+            )
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'écrire le fichier :\n{e}")
 
     # ---- Drawing --------------------------------------------------------
     def refresh_all(self) -> None:
