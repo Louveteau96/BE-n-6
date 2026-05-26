@@ -5,7 +5,7 @@ Usage:
     python main.py --simulate     # mock backend, no hardware required
 """
 
-import sys
+import sys # read command line arguments 
 import tkinter as tk
 from queue import Queue
 

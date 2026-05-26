@@ -8,7 +8,7 @@ frames.
 import matplotlib.dates as mdates
 
 
-def _x_axis(df):
+def _x_axis(df): #decides what goes on the x-axis:
     return df["timestamp"] if "timestamp" in df.columns else df.index
 
 

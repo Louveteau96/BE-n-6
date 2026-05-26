@@ -1,11 +1,11 @@
-"""Parse raw serial frames into typed dicts ready for pandas."""
-
-from datetime import datetime
-from typing import Optional
 import re
 
+import re
+from datetime import datetime
+from typing import Optional
 
-def process_raw_data(raw: str) -> Optional[dict]:
+
+def parse_labeled_frame(raw: str) -> Optional[dict]:
 
     def get(label) -> Optional[float]:
         try:
@@ -16,12 +16,10 @@ def process_raw_data(raw: str) -> Optional[dict]:
             return None
 
     try:
-        valeurs = raw.split()
         return {
             "timestamp": datetime.now(),
-            "heure":     valeurs[0],
-            "date":      valeurs[1],
             "o3":        get("o3"),
+            "hio3":      get("hio3"),
             "cellA":     get("cellai"),
             "cellB":     get("cellbi"),
             "benchT":    get("bncht"),
@@ -34,13 +32,11 @@ def process_raw_data(raw: str) -> Optional[dict]:
     except Exception as e:
         print(f"Data processing error: {e} | raw={raw!r}")
         return None
-
-
+    
 def main():
     rec1 = "14:14 05-26-26 flags 0C100000 o3 7.469 hio3 0.000 cellai 115685 cellbi 117893 bncht 31.6 lmpt 52.8 o3lt 67.3 flowa 0.751 flowb 0.717 pres 751.8"
-
-    processed = process_raw_data(rec1)
-    print(processed)
-
-
+    
+    data = parse_labeled_frame(rec1)
+    print(data)
+    
 main()

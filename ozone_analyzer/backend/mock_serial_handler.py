@@ -56,20 +56,19 @@ class MockSerialHandler:
         date  = now.strftime("%d/%m/%y")
 
         tokens = [
-            "lrec", "1", "1",
-            heure, date,
-            "0",                        # flag
-                
-            f"{o3:.2f}",                # o3        → valeurs[3]
-            "0.000",                     # hio3
-            f"{cellA:.2f}",             # cellA     → valeurs[4]
-            f"{cellB:.2f}",             # cellB     → valeurs[5]
-            f"{benchT:.2f}",            # benchT    → valeurs[6]
-            f"{lampT:.2f}",             # lampT     → valeurs[7]
-            f"{o3lamp:.2f}",            # o3lamp    → valeurs[8]
-            f"{flowA:.1f}",             # flowA     → valeurs[9]
-            f"{flowB:.1f}",             # flowB     → valeurs[10]
-            f"{pression:.2f}",          # pression  → valeurs[11]
+            heure,                          # 14:14
+            date,                           # 05-26-26
+            "flags", "0C100000",            # flags 0C100000
+            "o3",    f"{o3:.3f}",           # o3 7.469
+            "hio3",  "0.000",               # hio3 0.000
+            "cellai", f"{cellA:.0f}",       # cellai 115685
+            "cellbi", f"{cellB:.0f}",       # cellbi 117893
+            "bncht",  f"{benchT:.1f}",      # bncht 31.6
+            "lmpt",   f"{lampT:.1f}",       # lmpt 52.8
+            "o3lt",   f"{o3lamp:.1f}",      # o3lt 67.3
+            "flowa",  f"{flowA:.3f}",       # flowa 0.751
+            "flowb",  f"{flowB:.3f}",       # flowb 0.717
+            "pres",   f"{pression:.1f}",    # pres 751.8
         ]
         return " ".join(tokens)
 
