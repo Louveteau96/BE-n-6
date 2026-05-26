@@ -70,7 +70,8 @@ class SerialHandler:
     def start_acquisition(
         self, port: str, baudrate: int, id_analyseur: int, interval: int
     ) -> bool:
-        device_id = id_analyseur + 128
+        device_id = chr(id_analyseur + 128)
+        
         if not self.connect(port, baudrate, device_id):
             return False
 
@@ -83,10 +84,11 @@ class SerialHandler:
         self.thread.start()
         return True
 
-    def _acquisition_loop(self, device_id: int, interval: int) -> None:
+    def _acquisition_loop(self, device_id, interval: int) -> None:
         while not self.stop_event.is_set():
             try:
                 self._send_command("lrec 1 1", device_id)
+                print("send lrec 1 1s")
                 raw_data = self.read_response()
 
                 for _ in range(6):
@@ -133,3 +135,5 @@ class SerialHandler:
                 self.ser.close()
             except Exception:
                 pass
+
+
