@@ -87,6 +87,9 @@ class SerialHandler:
     ) -> bool:
         device_id = id_analyseur + 128
         
+        
+        self.stop_event.clear()          # ← reset so a restarted run doesn't exit instantly
+
         if not self.connect(port, baudrate, device_id):
             return False
 

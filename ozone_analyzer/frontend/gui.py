@@ -43,6 +43,11 @@ class GraphApp:
         self._interval = interval
         self._acquisition_running = False
 
+        # Button references — set in create_interface()
+        self._btn_start = None
+        self._btn_stop = None
+        
+        
         # Auto-save state
         self._autosave_path: str | None = None
 
@@ -92,25 +97,35 @@ class GraphApp:
 
         # Refresh button
         btn_refresh = ttk.Button(
-            btn_frame, text="🔄 Rafraîchir", command=self.refresh_all
+            btn_frame, text="🔄 Refresh", command=self.refresh_all
         )
         btn_refresh.pack(side="right", padx=(6, 0))
         Tooltip(btn_refresh, "Redessiner tous les graphiques manuellement")
 
         # Manual save button
         btn_save = ttk.Button(
-            btn_frame, text="💾 Sauvegarder CSV", command=self.save_csv
+            btn_frame, text="💾 Save as CSV", command=self.save_csv
         )
         btn_save.pack(side="right", padx=(6, 0))
-        Tooltip(btn_save, "Sauvegarder les données dans un fichier CSV personnalisé")
+        Tooltip(btn_save, "Save data in a specified CSV file")
 
         # Start acquisition button
         self._btn_start = ttk.Button(
-            btn_frame, text="▶ Démarrer l'acquisition",
+            btn_frame, text="▶ Start acquisition",
             command=self._start_acquisition
         )
         self._btn_start.pack(side="right", padx=(6, 0))
-        Tooltip(self._btn_start, "Connecter au port série et démarrer la lecture")
+        Tooltip(self._btn_start, "Connect to a serial port and start the acquisition")
+        
+        # Stop acquisition button
+        self._btn_stop = ttk.Button(
+            btn_frame, text="⏹ Stop acquisition",
+            command=self._stop_acquisition,
+            state="disabled"                  # greyed out until acquisition runs
+        )
+        self._btn_stop.pack(side="right", padx=(6, 0))
+        Tooltip(self._btn_stop, "Stop the acquisition and close serial port")
+        
 
     # ---- Start acquisition ----------------------------------------------
     def _start_acquisition(self) -> None:
@@ -125,9 +140,19 @@ class GraphApp:
         if started:
             self._acquisition_running = True
             self._btn_start.config(state="disabled")
+            self._btn_stop.config(state="normal")
             self._status_var.set("Acquisition démarrée...")
         else:
             self._status_var.set("⚠️ Impossible de démarrer — vérifiez le port série.")
+            
+    def _stop_acquisition(self) -> None:
+        if not self._acquisition_running:
+            return
+        self._backend.stop()
+        self._acquisition_running = False
+        self._btn_stop.config(state="disabled")
+        self._btn_start.config(state="normal")
+        self._status_var.set("Acquisition arrêtée. Cliquez ▶ pour redémarrer.")
 
     # ---- Queue polling on the Tk event loop -----------------------------
     def schedule_poll(self) -> None:
