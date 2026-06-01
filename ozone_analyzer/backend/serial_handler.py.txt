@@ -4,7 +4,7 @@ Runs the acquisition loop on a background thread and pushes raw response
 strings into a thread-safe Queue. The GUI drains the queue on its own
 event loop (see frontend/gui.py).
 """
-## CHAU
+
 import re
 import time
 import serial
@@ -56,30 +56,29 @@ class SerialHandler:
     # ---- Low-level I/O --------------------------------------------------
     def _send_command(self, cmd: str, device_id: int) -> None:
         prefix = bytes([device_id]) if device_id != 0 else b""
-        payload = prefix + cmd.encode('ascii') + b"\r\n"
+        payload = prefix + cmd.encode('utf-8') + b"\r\n"
         self.ser.write(payload)
-        self._log("TX", f"{cmd!r}  ->  bytes={payload!r}")
-
+        
     def read_response(self) -> str:
         """Poll the serial port until a non-empty line arrives or we are stopped.
 
         Uses stop_event.wait() instead of time.sleep() so shutdown is prompt.
         """
-        reponse = ""
-        for i in range(80): # 8 seconds
-            #print(f"RX : Read attempt {i}:")
+        for _ in range(80):
             if self.stop_event.wait(timeout=0.1):
                 break
             try:
-                raw = self.ser.readline()
-                
+                raw = self.ser.read_until(b"\r\n")
             except Exception as e:
                 self._log("RX", f"❌ read error: {e}")
-            line = raw.decode('ascii', errors="replace").strip()
-            if line: # string is true if non empty
+                break
+            # tolerant decode: a stray byte shows as the replacement char,
+            # so it is visible in the trace instead of crashing the read.
+            line = raw.decode("ascii", errors="replace").strip()
+            if line:
                 self._log("RX", f"{line!r}")
                 return line
-        return reponse
+        return ""
 
     # ---- Acquisition loop ----------------------------------------------
     def start_acquisition(
@@ -134,9 +133,8 @@ class SerialHandler:
         #          frame by its CONTENT instead — this also rejects the echo,
         #          which has none of these labels.
         parts = line.split()
-        required = {"flags", "o3",  "hio3", "cellai", "cellbi", "bncht", "lmpt", "o3lt", 
-                    "flowa", "flowb","pres" }
-        return required.issubset(parts) and len(parts) >= 15
+        return ("flags" in parts and "o3" in parts and "pres" in parts
+                and len(parts) >= 15)
     def _enqueue(self, raw_data: str) -> None:
         """Put with drop-oldest policy so the producer never blocks."""
         try:

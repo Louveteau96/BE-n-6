@@ -5,7 +5,7 @@ Usage:
     python main.py --simulate     # mock backend, no hardware required
 """
 
-import sys # read command line arguments 
+import sys
 import tkinter as tk
 from queue import Queue
 
@@ -21,26 +21,19 @@ def main() -> None:
     config = AppConfig()
     data_queue: Queue = Queue(maxsize=config.QUEUE_MAXSIZE)
 
-    # GUI is built first so it's ready to receive the first sample.
     root = tk.Tk()
-    app = GraphApp(root, data_queue, max_points=config.MAX_DATA_POINTS)
 
     if simulate:
         backend = MockSerialHandler(data_queue)
-        interval = 1                      # tighter cadence so the demo feels live
-        root.title(root.title() + "  [SIMULATION]")
+        interval = 1
+        root.title("Analyseur Ozone - Temps Réel  [SIMULATION]")
     else:
         backend = SerialHandler(data_queue)
         interval = config.ACQUISITION_INTERVAL
 
-    started = backend.start_acquisition(
-        config.PORT,
-        config.BAUDRATE,
-        config.ID_ANALYSEUR,
-        interval,
-    )
-    if not started:
-        print("⚠️  Acquisition could not start — check serial port / device.")
+    # Pass backend + config so the GUI button can start it
+    app = GraphApp(root, data_queue, backend, config, interval,
+                   max_points=config.MAX_DATA_POINTS)
 
     def on_close() -> None:
         backend.stop()

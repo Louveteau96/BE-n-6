@@ -7,7 +7,7 @@ s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 #cf doc page:206 pour le port
 port = 9880
 #Pour tester mettre l'adresse suivante : "127.0.0.1"
-ip = "192.168.1.2" #IP de la machine pour l'instant je sais pas
+ip = "192.168.0.200" #IP de la machine pour l'instant je sais pas
 adress = (ip,port)
 s.settimeout(10)
 id = 49 + 128

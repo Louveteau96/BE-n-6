@@ -203,7 +203,7 @@ def recuperation_donnees(ser : int, csv : str, delais_relevé : int, id : int):
 
 
 def main():
-    ser = connexion("/dev/ttyUSB0",9600,49)
+    ser = connexion("COM1",9600,49)
     print("fin connexion")
     csv = creer_csv()
     print("debut rec")

@@ -30,14 +30,21 @@ RECORD_DIR = "record"
 class GraphApp:
     POLL_INTERVAL_MS = 200
 
-    def __init__(self, root: tk.Tk, data_queue: Queue, max_points: int = 500):
+    def __init__(self, root: tk.Tk, data_queue: Queue,
+                 backend, config, interval: int,
+                 max_points: int = 500):
         self.root = root
         self.data_queue = data_queue
         self.max_points = max_points
         self.df = pd.DataFrame()
 
+        self._backend = backend
+        self._config = config
+        self._interval = interval
+        self._acquisition_running = False
+
         # Auto-save state
-        self._autosave_path: str | None = None   # set on first data received
+        self._autosave_path: str | None = None
 
         self.root.title("Analyseur Ozone - Temps Réel")
         self.root.geometry("1250x820")
@@ -45,7 +52,6 @@ class GraphApp:
         self.figures: dict[str, tuple] = {}
         self.canvases: dict[str, FigureCanvasTkAgg] = {}
 
-        # Ensure the record folder exists
         os.makedirs(RECORD_DIR, exist_ok=True)
 
         self.create_interface()
@@ -79,7 +85,7 @@ class GraphApp:
         btn_frame = ttk.Frame(self.root)
         btn_frame.pack(fill="x", padx=10, pady=8)
 
-        # Status label — shows the autosave path once active
+        # Status label
         self._status_var = tk.StringVar(value="En attente de données...")
         ttk.Label(btn_frame, textvariable=self._status_var,
                   foreground="gray").pack(side="left")
@@ -97,6 +103,31 @@ class GraphApp:
         )
         btn_save.pack(side="right", padx=(6, 0))
         Tooltip(btn_save, "Sauvegarder les données dans un fichier CSV personnalisé")
+
+        # Start acquisition button
+        self._btn_start = ttk.Button(
+            btn_frame, text="▶ Démarrer l'acquisition",
+            command=self._start_acquisition
+        )
+        self._btn_start.pack(side="right", padx=(6, 0))
+        Tooltip(self._btn_start, "Connecter au port série et démarrer la lecture")
+
+    # ---- Start acquisition ----------------------------------------------
+    def _start_acquisition(self) -> None:
+        if self._acquisition_running:
+            return
+        started = self._backend.start_acquisition(
+            self._config.PORT,
+            self._config.BAUDRATE,
+            self._config.ID_ANALYSEUR,
+            self._interval,
+        )
+        if started:
+            self._acquisition_running = True
+            self._btn_start.config(state="disabled")
+            self._status_var.set("Acquisition démarrée...")
+        else:
+            self._status_var.set("⚠️ Impossible de démarrer — vérifiez le port série.")
 
     # ---- Queue polling on the Tk event loop -----------------------------
     def schedule_poll(self) -> None:
@@ -127,10 +158,6 @@ class GraphApp:
 
     # ---- Auto-save ------------------------------------------------------
     def _autosave(self) -> None:
-        """Save to record/<start_datetime>.csv every time new data arrives.
-        The filename is fixed at the moment the first data point is received.
-        """
-        # First data point — create the filename now
         if self._autosave_path is None:
             filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
             self._autosave_path = os.path.join(RECORD_DIR, filename)
@@ -143,7 +170,6 @@ class GraphApp:
 
     # ---- Manual save button ---------------------------------------------
     def save_csv(self) -> None:
-        """Open a file dialog and save the current DataFrame to a chosen path."""
         if self.df.empty:
             messagebox.showwarning(
                 "Aucune donnée",
@@ -160,7 +186,7 @@ class GraphApp:
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
 
-        if not path:      # user cancelled
+        if not path:
             return
 
         try:
