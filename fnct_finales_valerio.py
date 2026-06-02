@@ -214,4 +214,4 @@ def main():
 #     print(donnee_valide("bonjours"))
 #     print(donnee_valide("14:14 05-26-26 flags 0C100000 o3 7.469 hio3 0.000 cellai 115685 cellbi 117893 bncht 31.6 lmpt 52.8 o3lt 67.3 flowa 0.751 flowb 0.717 pres 751.8"))
 
-main()
+
