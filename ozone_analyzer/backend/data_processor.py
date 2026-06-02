@@ -43,4 +43,3 @@ def main():
     print(processed)
 
 
-main()
