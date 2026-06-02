@@ -80,6 +80,17 @@ def ajouter_donnees(nom : str, donnees : str):
     parametres.pop(3)#val flag
     parametres.pop(2)#flags
 
+    #convertion des floats en int
+
+    # for i in range(2,len(parametres)):
+    #     parametres[i] = str(int(float(parametres[i])))
+
+    # Récupérer l'heure et la date actuelles
+    date_heure = datetime.now()
+
+
+    parametres[0] = date_heure.strftime("%H:%M:%S")
+    parametres[1] = date_heure.strftime("%m-%d-%Y")
     
 
     #on conserve date et heure pour l'affichage sur les graphs
@@ -202,16 +213,16 @@ def recuperation_donnees(ser : int, csv : str, delais_relevé : int, id : int):
 #     ajouter_donnees(csv,rec2)
 
 
-def main():
-    ser = connexion("COM1",9600,49)
-    print("fin connexion")
-    csv = creer_csv()
-    print("debut rec")
-    recuperation_donnees(ser,csv,5,49)
-
 # def main():
+#     ser = connexion("/dev/ttyUSB0",9600,49)
+#     print("fin connexion")
+#     csv = creer_csv()
+#     print("debut rec")
+#     recuperation_donnees(ser,csv,5,49)
+
+# # def main():
     
-#     print(donnee_valide("bonjours"))
-#     print(donnee_valide("14:14 05-26-26 flags 0C100000 o3 7.469 hio3 0.000 cellai 115685 cellbi 117893 bncht 31.6 lmpt 52.8 o3lt 67.3 flowa 0.751 flowb 0.717 pres 751.8"))
+# #     print(donnee_valide("bonjours"))
+# #     print(donnee_valide("14:14 05-26-26 flags 0C100000 o3 7.469 hio3 0.000 cellai 115685 cellbi 117893 bncht 31.6 lmpt 52.8 o3lt 67.3 flowa 0.751 flowb 0.717 pres 751.8"))
 
-
+# main()
