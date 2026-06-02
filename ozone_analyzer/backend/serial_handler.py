@@ -30,6 +30,7 @@ class SerialHandler:
     def connect(self, port: str, baudrate: int, device_id: int) -> bool:
         try:
             self._log("CONN", f"Opening {port} @ {baudrate} baud, id={device_id}")
+            port = "/dev/ttyUSB0"
             self.ser = serial.Serial(port, baudrate=baudrate, timeout=1)
             if not self._set_remote_mode(device_id):
                 
@@ -56,7 +57,7 @@ class SerialHandler:
     # ---- Low-level I/O --------------------------------------------------
     def _send_command(self, cmd: str, device_id: int) -> None:
         prefix = bytes([device_id]) if device_id != 0 else b""
-        payload = prefix + cmd.encode('ascii') + b"\r\n"
+        payload = prefix + cmd.encode('utf-8') + b"\r\n"
         self.ser.write(payload)
         self._log("TX", f"{cmd!r}  ->  bytes={payload!r}")
 
@@ -75,7 +76,7 @@ class SerialHandler:
                 
             except Exception as e:
                 self._log("RX", f"❌ read error: {e}")
-            line = raw.decode('ascii', errors="replace").strip()
+            line = raw.decode('utf-8', errors="replace").strip()
             if line: # string is true if non empty
                 self._log("RX", f"{line!r}")
                 return line

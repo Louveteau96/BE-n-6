@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass
 class AppConfig:
-    PORT: str = "COM1"            # change to your port (e.g. "/dev/ttyUSB0")
+    PORT: str = "/dev/ttyUSB0"            # change to your port (e.g. "/dev/ttyUSB0")
     BAUDRATE: int = 9600
     ID_ANALYSEUR: int = 49 
     ACQUISITION_INTERVAL: int = 5      # seconds between samples
