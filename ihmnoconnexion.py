@@ -15,20 +15,28 @@ except ImportError:
     print("⚠️  mplcursors non installé. → pip install mplcursors")
 
 DELAIS_RELEVE = 60
+MAX_X_TICKS   = 12
 
 
 # ===========================================================================
-#  TOOLTIP NATIF
+#  TOOLTIP NATIF  — affiche heure + date au survol
 # ===========================================================================
 
 class NativeTooltip:
-    def __init__(self, ax, canvas, line, x_label="X", y_label="Y", color="#2ecc71"):
-        self.ax = ax
-        self.canvas = canvas
-        self.line = line
-        self.x_label = x_label
-        self.y_label = y_label
-        self.color = color
+    """
+    Tooltip de survol.
+    x_labels : liste de chaînes "HH:MM DD-MM-YY" parallèle aux données X
+                (indices entiers). Utilisée pour afficher la date+heure dans
+                l'annotation au lieu de l'indice numérique.
+    """
+
+    def __init__(self, ax, canvas, line, x_labels=None, y_label="Y", color="#2ecc71"):
+        self.ax       = ax
+        self.canvas   = canvas
+        self.line     = line
+        self.x_labels = x_labels  # list[str] | None
+        self.y_label  = y_label
+        self.color    = color
 
         self.annot = ax.annotate(
             "",
@@ -53,19 +61,26 @@ class NativeTooltip:
         ydata = self.line.get_ydata()
         if len(xdata) == 0: return
         xy_pixels = self.ax.transData.transform(list(zip(xdata, ydata)))
-        distances = ((xy_pixels[:, 0] - event.x) ** 2 + (xy_pixels[:, 1] - event.y) ** 2) ** 0.5
+        distances = ((xy_pixels[:, 0] - event.x) ** 2 +
+                     (xy_pixels[:, 1] - event.y) ** 2) ** 0.5
         idx = distances.argmin()
         changed = False
         if distances[idx] <= self._HIT_RADIUS:
             x, y = xdata[idx], ydata[idx]
+            # Libellé X : heure + date si disponible, sinon indice brut
+            if self.x_labels and 0 <= int(round(x)) < len(self.x_labels):
+                x_str = self.x_labels[int(round(x))]
+            else:
+                x_str = str(x)
             self.annot.xy = (x, y)
-            self.annot.set_text(f"  {self.x_label}: {x}\n  {self.y_label}: {y:.4g}")
+            self.annot.set_text(f"  📅 {x_str}\n  {self.y_label}: {y:.4g}")
             if not self.annot.get_visible():
                 self.annot.set_visible(True)
                 self.highlight.set_data([x], [y])
                 self.highlight.set_visible(True)
                 changed = True
-            elif self.highlight.get_xdata()[0] != x or self.highlight.get_ydata()[0] != y:
+            elif (self.highlight.get_xdata()[0] != x or
+                  self.highlight.get_ydata()[0] != y):
                 self.highlight.set_data([x], [y])
                 changed = True
         else:
@@ -88,19 +103,28 @@ class NativeTooltip:
 
 
 # ===========================================================================
-#  TOOLTIP
+#  UTILITAIRE TOOLTIP
 # ===========================================================================
 
-def attach_tooltip(ax, canvas, lines, x_label="X", y_label="Y", colors=None):
+def attach_tooltip(ax, canvas, lines, x_labels=None, y_label="Y", colors=None):
+    """
+    x_labels : list[str] "HH:MM DD-MM-YY" pour chaque point (même longueur
+               que les données). Transmis au tooltip pour l'affichage.
+    """
     tooltips = []
     if MPLCURSORS_AVAILABLE:
         cursor = mplcursors.cursor(lines, hover=mplcursors.HoverMode.Transient)
 
         @cursor.connect("add")
         def on_add(sel):
-            x, y = sel.target
+            _, y = sel.target
+            # Récupère l'indice entier le plus proche pour lire le label
+            idx = int(round(sel.index))
+            x_str = (x_labels[idx]
+                     if x_labels and 0 <= idx < len(x_labels)
+                     else str(sel.target[0]))
             line_color = sel.artist.get_color()
-            sel.annotation.set_text(f"  {x_label}: {x}\n  {y_label}: {y:.4g}")
+            sel.annotation.set_text(f"  📅 {x_str}\n  {y_label}: {y:.4g}")
             sel.annotation.get_bbox_patch().set(
                 facecolor="#1a1a2e", edgecolor=line_color, alpha=0.92, linewidth=1.5,
             )
@@ -113,7 +137,10 @@ def attach_tooltip(ax, canvas, lines, x_label="X", y_label="Y", colors=None):
     else:
         for i, line in enumerate(lines):
             color = colors[i] if colors and i < len(colors) else "#4f46e5"
-            tooltips.append(NativeTooltip(ax, canvas, line, x_label, y_label, color))
+            tooltips.append(
+                NativeTooltip(ax, canvas, line,
+                              x_labels=x_labels, y_label=y_label, color=color)
+            )
     return tooltips
 
 
@@ -127,7 +154,6 @@ class LoginScreen:
     def __init__(self, root, on_success):
         self.root       = root
         self.on_success = on_success
-
         self.root.title("Connexion – Analyse de Données")
         self.root.geometry("500x660")
         self.root.resizable(False, False)
@@ -170,7 +196,7 @@ class LoginScreen:
     def _build_serial_tab(self, parent):
         self._add_label(parent, "Port série  (ex. COM3, /dev/ttyUSB0)")
         self.port_entry = self._add_entry(parent)
-        self.port_entry.insert(0, "COM3")
+        self.port_entry.insert(0, "/dev/ttyUSB0")
         self._add_separator(parent)
 
         self._add_label(parent, "Baudrate")
@@ -197,8 +223,10 @@ class LoginScreen:
 
     def _build_file_tab(self, parent):
         tk.Frame(parent, bg="#16213e", height=30).pack()
-        tk.Label(parent, text="Sélectionnez un fichier CSV enregistré\nlors d'une session précédente.",
-                 font=("Arial", 11), bg="#16213e", fg="#c0c0e0", justify="center").pack(pady=(10, 20))
+        tk.Label(parent,
+                 text="Sélectionnez un fichier CSV enregistré\nlors d'une session précédente.",
+                 font=("Arial", 11), bg="#16213e", fg="#c0c0e0",
+                 justify="center").pack(pady=(10, 20))
 
         path_frame = tk.Frame(parent, bg="#0f3460", bd=0)
         path_frame.pack(fill="x", padx=20)
@@ -271,13 +299,29 @@ class LoginScreen:
         except Exception as exc:
             self.error_var.set(f"Erreur création CSV : {exc}"); return
 
-        threading.Thread(
-            target=fnct_finales.recuperation_donnees,
-            args=(ser, csv_path, delai, id_analyseur),
-            daemon=True,
-        ).start()
+        stop_event = threading.Event()
 
-        self._launch_app(csv_path, live=True, delai_ms=delai * 1000)
+        def _recuperation_avec_stop():
+            """Wrapper interruptible autour de recuperation_donnees."""
+            id2 = chr(id_analyseur + 128)
+            while not stop_event.is_set():
+                compte = 0
+                try:
+                    fnct_finales.envoie_commande(ser, "lrec 1 1", id2)
+                    reponse = fnct_finales.lire_reponse(ser)
+                    while not fnct_finales.donnee_valide(reponse) and compte < 10:
+                        compte += 1
+                        reponse = fnct_finales.lire_reponse(ser)
+                    fnct_finales.ajouter_donnees(csv_path, reponse)
+                except Exception as e:
+                    print(f"Erreur récupération : {e}")
+                # Attente interruptible : stop_event.wait() se réveille immédiatement
+                # si set() est appelé depuis le thread principal
+                stop_event.wait(timeout=delai)
+
+        threading.Thread(target=_recuperation_avec_stop, daemon=True).start()
+
+        self._launch_app(csv_path, live=True, delai_ms=delai * 1000, stop_event=stop_event)
 
     def _browse_file(self):
         path = filedialog.askopenfilename(
@@ -299,30 +343,28 @@ class LoginScreen:
             pd.read_csv(csv_path, nrows=1)
         except Exception as exc:
             self.error_var.set(f"Impossible de lire le fichier : {exc}"); return
-
         self._launch_app(csv_path, live=False)
 
-    def _launch_app(self, csv_path, live=False, delai_ms=0):
+    def _launch_app(self, csv_path, live=False, delai_ms=0, stop_event=None):
         for widget in self.root.winfo_children():
             widget.destroy()
         self.root.geometry("1100x720")
         self.root.resizable(True, True)
-        self.on_success(self.root, csv_path, live, delai_ms)
+        self.on_success(self.root, csv_path, live, delai_ms, stop_event)
 
 
 # ===========================================================================
 #  CONFIG DES GRAPHIQUES
 # ===========================================================================
 
-X_COL = "heure"
+X_COL   = "heure"   # colonne heure (axe numérique)
+DATE_COL = "date"   # colonne date  (pour le label complet du tooltip)
 
-# Onglets avec une seule courbe
 TABS_CONFIG = {
     "Ozone":    {"col": "o3",       "color": "#2ecc71", "ylabel": "Concentration O₃ (ppb)"},
     "Pression": {"col": "pression", "color": "#3498db", "ylabel": "Pression (hPa)"},
 }
 
-# Onglets avec deux courbes (A/B)
 DUAL_TABS_CONFIG = {
     "Cell": {
         "A": {"col": "cellA", "color": "#1abc9c", "ylabel": "Signal cellule", "title": "Cell A"},
@@ -334,7 +376,6 @@ DUAL_TABS_CONFIG = {
     },
 }
 
-# Onglets avec N courbes sur le même graphe
 MULTI_TABS_CONFIG = {
     "Températures & O3 Lamp": [
         {"col": "o3lamp", "color": "#9b59b6", "label": "O3 Lamp"},
@@ -349,11 +390,13 @@ MULTI_TABS_CONFIG = {
 # ===========================================================================
 
 class GraphApp:
-    def __init__(self, root, csv_path: str, live: bool = False, delai_ms: int = 0):
-        self.root     = root
-        self.csv_path = csv_path
-        self.live     = live
-        self.delai_ms = delai_ms
+    def __init__(self, root, csv_path: str, live: bool = False,
+                 delai_ms: int = 0, stop_event: threading.Event = None):
+        self.root       = root
+        self.csv_path   = csv_path
+        self.live       = live
+        self.delai_ms   = delai_ms
+        self.stop_event = stop_event   # None en mode fichier
         self._last_row_count = -1
         self._after_id = None
 
@@ -388,7 +431,25 @@ class GraphApp:
         if live and delai_ms > 0:
             self._schedule_auto_refresh()
 
+        # Intercepte la croix de fermeture pour tuer threads et after()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
     # ---------------------------------------------------------------- tabs --
+
+    def _on_close(self):
+        """Appelé par la croix de fermeture : arrête after() et le thread de relevé."""
+        # 1. Annule le prochain auto-refresh planifié par root.after()
+        if self._after_id is not None:
+            self.root.after_cancel(self._after_id)
+            self._after_id = None
+
+        # 2. Signale au thread recuperation_donnees de s'arrêter
+        #    (stop_event.wait(timeout) se réveille immédiatement)
+        if self.stop_event is not None:
+            self.stop_event.set()
+
+        # 3. Ferme la fenêtre
+        self.root.destroy()
 
     def _create_tabs(self):
         for tab_name, config in TABS_CONFIG.items():
@@ -405,8 +466,6 @@ class GraphApp:
             frame = ttk.Frame(self.notebook)
             self.notebook.add(frame, text=tab_name)
             self._create_multi_graph(frame, tab_name, series_list)
-
-    # ── Graphe simple ──────────────────────────────────────────────────────
 
     def _create_graph(self, parent, tab_name, config):
         graph_frame = ttk.Frame(parent)
@@ -425,8 +484,6 @@ class GraphApp:
         ttk.Button(toolbar_frame, text="🔄 Rafraîchir",
                    command=lambda t=tab_name, c=config: self._refresh_single(t, c)
                    ).pack(side="right", padx=5)
-
-    # ── Graphe dual (A/B) ──────────────────────────────────────────────────
 
     def _create_dual_graph(self, parent, tab_name, configs):
         graph_frame = ttk.Frame(parent)
@@ -447,8 +504,6 @@ class GraphApp:
                    command=lambda t=tab_name, c=configs: self._refresh_dual(t, c)
                    ).pack(side="right", padx=5)
 
-    # ── Graphe multi (N courbes) ───────────────────────────────────────────
-
     def _create_multi_graph(self, parent, tab_name, series_list):
         graph_frame = ttk.Frame(parent)
         graph_frame.pack(fill="both", expand=True, padx=5, pady=5)
@@ -468,7 +523,7 @@ class GraphApp:
                    command=lambda t=tab_name, s=series_list: self._refresh_multi(t, s)
                    ).pack(side="right", padx=5)
 
-    # ─────────────────────────── auto-refresh (mode live) ─────────────────
+    # ─────────────────────────── auto-refresh ─────────────────────────────
 
     def _schedule_auto_refresh(self):
         self._after_id = self.root.after(self.delai_ms, self._auto_refresh)
@@ -486,7 +541,7 @@ class GraphApp:
             pass
         self._schedule_auto_refresh()
 
-    # --------------------------------------------------------------- plot --
+    # --------------------------------------------------------------- CSV --
 
     def _load_csv(self):
         if not os.path.exists(self.csv_path):
@@ -497,15 +552,41 @@ class GraphApp:
         except Exception:
             return None
 
+    def _build_x_labels(self, df):
+        """
+        Construit la liste des labels X complets : "HH:MM  DD-MM-YY".
+        Si la colonne date est absente, utilise uniquement l'heure.
+        """
+        if DATE_COL in df.columns:
+            return (df[X_COL].astype(str) + "  " + df[DATE_COL].astype(str)).tolist()
+        return df[X_COL].astype(str).tolist()
+
+    # --------------------------------------------------------------- ticks --
+
+    def _apply_x_ticks(self, ax, df):
+        """
+        Pose au maximum MAX_X_TICKS labels "HH:MM  DD-MM-YY" répartis
+        uniformément sur l'axe X (indices entiers).
+        """
+        x_labels = self._build_x_labels(df)
+        n = len(x_labels)
+        if n == 0:
+            return
+
+        step = max(1, n // MAX_X_TICKS)
+        tick_positions = list(range(0, n, step))
+        tick_labels    = [x_labels[i] for i in tick_positions]
+
+        ax.set_xticks(tick_positions)
+        ax.set_xticklabels(tick_labels, rotation=90, ha="center", fontsize=6)
+
+    # --------------------------------------------------------------- plot --
+
     def _clear_tooltips(self, key):
         for tip in self.tooltips.get(key, []):
             try: tip.remove()
             except Exception: pass
         self.tooltips[key] = []
-
-    def _apply_x_ticks(self, ax, x_data):
-        ax.set_xticks(range(len(x_data)))
-        ax.set_xticklabels(x_data, rotation=45, ha="right", fontsize=8)
 
     # ── Plot simple ────────────────────────────────────────────────────────
 
@@ -521,16 +602,20 @@ class GraphApp:
             ax.text(0.5, 0.5, f"Colonne '{config['col']}' introuvable dans le CSV.",
                     ha="center", va="center", fontsize=12, transform=ax.transAxes, color="red")
         else:
-            x_data = df[X_COL]
-            y_data = pd.to_numeric(df[config["col"]], errors="coerce")
-            line, = ax.plot(x_data, y_data, color=config["color"],
+            x_labels = self._build_x_labels(df)
+            y_data   = pd.to_numeric(df[config["col"]], errors="coerce")
+            x_idx    = list(range(len(y_data)))
+
+            line, = ax.plot(x_idx, y_data, color=config["color"],
                             linewidth=2, marker="o", markersize=4, alpha=0.8)
-            ax.fill_between(range(len(y_data)), y_data, alpha=0.2, color=config["color"])
-            self._apply_x_ticks(ax, x_data)
+            ax.fill_between(x_idx, y_data, alpha=0.2, color=config["color"])
+            self._apply_x_ticks(ax, df)
             ax.set_ylabel(config["ylabel"], fontsize=11)
+
             if canvas:
                 self.tooltips[tab_name] = attach_tooltip(
-                    ax, canvas, [line], x_label=X_COL, y_label=config["col"],
+                    ax, canvas, [line],
+                    x_labels=x_labels, y_label=config["col"],
                     colors=[config["color"]])
 
         ax.set_title(tab_name, fontsize=14, fontweight="bold", pad=15)
@@ -550,28 +635,33 @@ class GraphApp:
             ax.text(0.5, 0.5, "En attente de données…",
                     ha="center", va="center", fontsize=12, transform=ax.transAxes, color="gray")
         else:
-            x_data = df[X_COL]
+            x_labels = self._build_x_labels(df)
+            x_idx    = list(range(len(df)))
+
             for k in ("A", "B"):
                 cfg = configs[k]
                 if cfg["col"] not in df.columns: continue
                 y_data = pd.to_numeric(df[cfg["col"]], errors="coerce")
-                line, = ax.plot(x_data, y_data, color=cfg["color"], linewidth=2,
+                line, = ax.plot(x_idx, y_data, color=cfg["color"], linewidth=2,
                                 marker="o", markersize=4, alpha=0.8, label=cfg["title"])
-                ax.fill_between(range(len(y_data)), y_data, alpha=0.15, color=cfg["color"])
+                ax.fill_between(x_idx, y_data, alpha=0.15, color=cfg["color"])
                 lines.append(line); colors.append(cfg["color"])
-            self._apply_x_ticks(ax, x_data)
+
+            self._apply_x_ticks(ax, df)
             ax.set_ylabel(list(configs.values())[0]["ylabel"], fontsize=11)
             if canvas and lines:
                 self.tooltips[key] = attach_tooltip(
-                    ax, canvas, lines, x_label=X_COL,
-                    y_label=list(configs.values())[0]["ylabel"], colors=colors)
+                    ax, canvas, lines,
+                    x_labels=x_labels,
+                    y_label=list(configs.values())[0]["ylabel"],
+                    colors=colors)
 
         ax.set_title(tab_name, fontsize=14, fontweight="bold", pad=15)
         ax.grid(True, linestyle="--", alpha=0.7)
         ax.set_facecolor("#fafafa")
         ax.legend(fontsize=10)
 
-    # ── Plot multi (N courbes) ─────────────────────────────────────────────
+    # ── Plot multi ─────────────────────────────────────────────────────────
 
     def _plot_multi(self, ax, tab_name, series_list, canvas=None):
         ax.clear()
@@ -584,49 +674,47 @@ class GraphApp:
             ax.text(0.5, 0.5, "En attente de données…",
                     ha="center", va="center", fontsize=12, transform=ax.transAxes, color="gray")
         else:
-            x_data = df[X_COL]
-            for series in series_list:
-                if series["col"] not in df.columns:
-                    continue
-                y_data = pd.to_numeric(df[series["col"]], errors="coerce")
-                line, = ax.plot(x_data, y_data, color=series["color"], linewidth=2,
-                                marker="o", markersize=4, alpha=0.8, label=series["label"])
-                ax.fill_between(range(len(y_data)), y_data, alpha=0.12, color=series["color"])
-                lines.append(line)
-                colors.append(series["color"])
+            x_labels = self._build_x_labels(df)
+            x_idx    = list(range(len(df)))
 
-            self._apply_x_ticks(ax, x_data)
+            for series in series_list:
+                if series["col"] not in df.columns: continue
+                y_data = pd.to_numeric(df[series["col"]], errors="coerce")
+                line, = ax.plot(x_idx, y_data, color=series["color"], linewidth=2,
+                                marker="o", markersize=4, alpha=0.8, label=series["label"])
+                ax.fill_between(x_idx, y_data, alpha=0.12, color=series["color"])
+                lines.append(line); colors.append(series["color"])
+
+            self._apply_x_ticks(ax, df)
             ax.set_ylabel("Valeur", fontsize=11)
             if canvas and lines:
                 self.tooltips[key] = attach_tooltip(
-                    ax, canvas, lines, x_label=X_COL, y_label="valeur", colors=colors)
+                    ax, canvas, lines,
+                    x_labels=x_labels, y_label="valeur", colors=colors)
 
         ax.set_title(tab_name, fontsize=14, fontweight="bold", pad=15)
         ax.grid(True, linestyle="--", alpha=0.7)
         ax.set_facecolor("#fafafa")
         ax.legend(fontsize=10)
 
-    # ─────────────────────────────────────────────── refresh ──────────────
+    # ─────────────────────────────────────── refresh ──────────────────────
 
     def _refresh_single(self, tab_name, config):
         fig, ax = self.figures[tab_name]
-        canvas  = self.canvases[tab_name]
-        self._plot(ax, tab_name, config, canvas)
-        canvas.draw()
+        self._plot(ax, tab_name, config, self.canvases[tab_name])
+        self.canvases[tab_name].draw()
 
     def _refresh_dual(self, tab_name, configs):
-        key     = f"{tab_name}_dual"
+        key = f"{tab_name}_dual"
         fig, ax = self.figures[key]
-        canvas  = self.canvases[key]
-        self._plot_dual(ax, tab_name, configs, canvas)
-        canvas.draw()
+        self._plot_dual(ax, tab_name, configs, self.canvases[key])
+        self.canvases[key].draw()
 
     def _refresh_multi(self, tab_name, series_list):
-        key     = f"{tab_name}_multi"
+        key = f"{tab_name}_multi"
         fig, ax = self.figures[key]
-        canvas  = self.canvases[key]
-        self._plot_multi(ax, tab_name, series_list, canvas)
-        canvas.draw()
+        self._plot_multi(ax, tab_name, series_list, self.canvases[key])
+        self.canvases[key].draw()
 
     def _do_refresh_all(self, silent=False):
         for tab_name, config in TABS_CONFIG.items():
@@ -650,6 +738,6 @@ if __name__ == "__main__":
     root = tk.Tk()
     LoginScreen(
         root,
-        on_success=lambda r, csv_path, live, delai_ms: GraphApp(r, csv_path, live, delai_ms),
+        on_success=lambda r, csv_path, live, delai_ms, stop_event: GraphApp(r, csv_path, live, delai_ms, stop_event),
     )
     root.mainloop()
