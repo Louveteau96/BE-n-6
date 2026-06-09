@@ -30,7 +30,7 @@ class SerialHandler:
     def connect(self, port: str, baudrate: int, device_id: int) -> bool:
         try:
             self._log("CONN", f"Opening {port} @ {baudrate} baud, id={device_id}")
-            port = "/dev/ttyUSB0"
+            #port = "/dev/ttyUSB0"
             self.ser = serial.Serial(port, baudrate=baudrate, timeout=1)
             if not self._set_remote_mode(device_id):
                 

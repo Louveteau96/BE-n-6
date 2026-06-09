@@ -8,7 +8,7 @@ frames.
 import matplotlib.dates as mdates
 
 
-def _x_axis(df): #decides what goes on the x-axis:
+def _x_axis(df):
     return df["timestamp"] if "timestamp" in df.columns else df.index
 
 
@@ -43,7 +43,8 @@ def create_dual_plot(ax, df, config):
             if col in df.columns:
                 ax.plot(x, df[col], color=config["colors"][i],
                         linewidth=2, marker="o", label=col, alpha=0.9)
-        ax.legend()
+                #ax.fill_between(x, df[col], alpha=0.15, color=config["colors"][i])
+        ax.legend(loc="upper left", bbox_to_anchor=(1, 1), borderaxespad=0)
         _format_time_axis(ax, df)
     else:
         ax.text(0.5, 0.5, "En attente de données...",

@@ -7,6 +7,12 @@ queue via ``root.after()`` every POLL_INTERVAL_MS milliseconds. This keeps
 all dataframe and matplotlib operations on the main thread, eliminating
 the thread-safety hazards of writing to ``self.df`` from a worker while
 the main thread is reading from it.
+
+File mode
+---------
+Pass csv_path=<path> and leave data_queue/backend/config/interval as None.
+GraphApp will load the CSV immediately, display it, and disable acquisition
+controls. Queue polling is still scheduled but does nothing (queue is None).
 """
 
 import os
@@ -30,37 +36,59 @@ RECORD_DIR = "record"
 class GraphApp:
     POLL_INTERVAL_MS = 200
 
-    def __init__(self, root: tk.Tk, data_queue: Queue,
-                 backend, config, interval: int,
-                 max_points: int = 500):
-        self.root = root
+    def __init__(self, root: tk.Tk, data_queue: Queue | None,
+                 backend, config, interval: int | None,
+                 max_points: int = 500,
+                 csv_path: str | None = None):
+        self.root       = root
         self.data_queue = data_queue
         self.max_points = max_points
-        self.df = pd.DataFrame()
+        self.df         = pd.DataFrame()
 
-        self._backend = backend
-        self._config = config
-        self._interval = interval
+        self._backend   = backend
+        self._config    = config
+        self._interval  = interval
         self._acquisition_running = False
+
+        # File mode: load CSV immediately, disable acquisition
+        self._file_mode = csv_path is not None
+        self._csv_source_path = csv_path
 
         # Button references — set in create_interface()
         self._btn_start = None
-        self._btn_stop = None
-        
-        
-        # Auto-save state
+        self._btn_stop  = None
+
+        # Auto-save state (serial mode only)
         self._autosave_path: str | None = None
 
-        self.root.title("Analyseur Ozone - Temps Réel")
+        # Pending after() job — kept so we can cancel it on close
+        self._poll_after_id = None
+
+        if self._file_mode:
+            basename = os.path.basename(csv_path)
+            self.root.title(f"Analyseur Ozone — {basename}  [Lecture seule]")
+        else:
+            self.root.title("Analyseur Ozone - Temps Réel")
         self.root.geometry("1250x820")
 
-        self.figures: dict[str, tuple] = {}
+        self.figures:  dict[str, tuple]             = {}
         self.canvases: dict[str, FigureCanvasTkAgg] = {}
 
         os.makedirs(RECORD_DIR, exist_ok=True)
 
         self.create_interface()
-        self.schedule_poll()
+
+        if self._file_mode:
+            self._load_file(csv_path)
+        else:
+            self.schedule_poll()
+
+    # ---- Clean shutdown -------------------------------------------------
+    def close(self) -> None:
+        """Cancel the pending poll job so root.destroy() doesn't crash."""
+        if self._poll_after_id is not None:
+            self.root.after_cancel(self._poll_after_id)
+            self._poll_after_id = None
 
     # ---- UI construction ------------------------------------------------
     def create_interface(self) -> None:
@@ -75,7 +103,7 @@ class GraphApp:
             canvas = FigureCanvasTkAgg(fig, master=frame)
             canvas.get_tk_widget().pack(fill="both", expand=True)
 
-            self.figures[name] = (fig, ax)
+            self.figures[name]  = (fig, ax)
             self.canvases[name] = canvas
 
             NavigationToolbar2Tk(canvas, frame).update()
@@ -90,44 +118,64 @@ class GraphApp:
         btn_frame = ttk.Frame(self.root)
         btn_frame.pack(fill="x", padx=10, pady=8)
 
-        # Status label
-        self._status_var = tk.StringVar(value="En attente de données...")
+        self._status_var = tk.StringVar(
+            value="Fichier chargé." if self._file_mode else "En attente de données..."
+        )
         ttk.Label(btn_frame, textvariable=self._status_var,
                   foreground="gray").pack(side="left")
 
-        # Refresh button
         btn_refresh = ttk.Button(
             btn_frame, text="🔄 Refresh", command=self.refresh_all
         )
         btn_refresh.pack(side="right", padx=(6, 0))
         Tooltip(btn_refresh, "Redessiner tous les graphiques manuellement")
 
-        # Manual save button
         btn_save = ttk.Button(
             btn_frame, text="💾 Save as CSV", command=self.save_csv
         )
         btn_save.pack(side="right", padx=(6, 0))
         Tooltip(btn_save, "Save data in a specified CSV file")
 
-        # Start acquisition button
-        self._btn_start = ttk.Button(
-            btn_frame, text="▶ Start acquisition",
-            command=self._start_acquisition
-        )
-        self._btn_start.pack(side="right", padx=(6, 0))
-        Tooltip(self._btn_start, "Connect to a serial port and start the acquisition")
-        
-        # Stop acquisition button
-        self._btn_stop = ttk.Button(
-            btn_frame, text="⏹ Stop acquisition",
-            command=self._stop_acquisition,
-            state="disabled"                  # greyed out until acquisition runs
-        )
-        self._btn_stop.pack(side="right", padx=(6, 0))
-        Tooltip(self._btn_stop, "Stop the acquisition and close serial port")
-        
+        if not self._file_mode:
+            self._btn_start = ttk.Button(
+                btn_frame, text="▶ Start acquisition",
+                command=self._start_acquisition
+            )
+            self._btn_start.pack(side="right", padx=(6, 0))
+            Tooltip(self._btn_start, "Connect to a serial port and start the acquisition")
 
-    # ---- Start acquisition ----------------------------------------------
+            self._btn_stop = ttk.Button(
+                btn_frame, text="⏹ Stop acquisition",
+                command=self._stop_acquisition,
+                state="disabled"
+            )
+            self._btn_stop.pack(side="right", padx=(6, 0))
+            Tooltip(self._btn_stop, "Stop the acquisition and close serial port")
+        else:
+            ttk.Label(btn_frame,
+                      text=f"📂 {self._csv_source_path}",
+                      foreground="#555555",
+                      font=("TkDefaultFont", 9)).pack(side="right", padx=(6, 0))
+
+    # ---- File mode ------------------------------------------------------
+    def _load_file(self, path: str) -> None:
+        try:
+            df = pd.read_csv(path)
+            if df.empty:
+                self._status_var.set("⚠️ Le fichier est vide.")
+                return
+            if "timestamp" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+            self.df = df
+            self.refresh_all()
+            self._status_var.set(
+                f"✅ {len(self.df)} ligne(s) chargée(s) depuis {os.path.basename(path)}"
+            )
+        except Exception as e:
+            messagebox.showerror("Erreur de lecture", f"Impossible de lire le fichier :\n{e}")
+            self._status_var.set("❌ Erreur lors du chargement.")
+
+    # ---- Start / stop acquisition (serial mode only) --------------------
     def _start_acquisition(self) -> None:
         if self._acquisition_running:
             return
@@ -144,7 +192,7 @@ class GraphApp:
             self._status_var.set("Acquisition démarrée...")
         else:
             self._status_var.set("⚠️ Impossible de démarrer — vérifiez le port série.")
-            
+
     def _stop_acquisition(self) -> None:
         if not self._acquisition_running:
             return
@@ -154,11 +202,13 @@ class GraphApp:
         self._btn_start.config(state="normal")
         self._status_var.set("Acquisition arrêtée. Cliquez ▶ pour redémarrer.")
 
-    # ---- Queue polling on the Tk event loop -----------------------------
+    # ---- Queue polling (serial mode only) -------------------------------
     def schedule_poll(self) -> None:
-        self.root.after(self.POLL_INTERVAL_MS, self._poll_queue)
+        self._poll_after_id = self.root.after(self.POLL_INTERVAL_MS, self._poll_queue)
 
     def _poll_queue(self) -> None:
+        if self.data_queue is None:
+            return
         new_rows = []
         try:
             while True:
@@ -181,19 +231,18 @@ class GraphApp:
 
         self.schedule_poll()
 
-    # ---- Auto-save ------------------------------------------------------
+    # ---- Auto-save (serial mode only) -----------------------------------
     def _autosave(self) -> None:
         if self._autosave_path is None:
             filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
             self._autosave_path = os.path.join(RECORD_DIR, filename)
             self._status_var.set(f"Enregistrement : {self._autosave_path}")
-
         try:
             self.df.to_csv(self._autosave_path, index=False)
         except Exception as e:
             print(f"Autosave error: {e}")
 
-    # ---- Manual save button ---------------------------------------------
+    # ---- Manual save ----------------------------------------------------
     def save_csv(self) -> None:
         if self.df.empty:
             messagebox.showwarning(
@@ -210,10 +259,8 @@ class GraphApp:
             initialfile=default_name,
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
-
         if not path:
             return
-
         try:
             self.df.to_csv(path, index=False)
             messagebox.showinfo(
@@ -227,7 +274,7 @@ class GraphApp:
     def refresh_all(self) -> None:
         for name, config in PLOT_CONFIGS.items():
             fig, ax = self.figures[name]
-            canvas = self.canvases[name]
+            canvas  = self.canvases[name]
             if config.get("dual"):
                 create_dual_plot(ax, self.df, config)
             else:

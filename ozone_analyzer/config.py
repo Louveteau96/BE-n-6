@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 @dataclass
 class AppConfig:
-    PORT: str = "/dev/ttyUSB0"            # change to your port (e.g. "/dev/ttyUSB0")
+    #PORT: str = "/dev/ttyUSB0"            # change to your port (e.g. "/dev/ttyUSB0")
+    PORT: str = "COM1"
     BAUDRATE: int = 9600
     ID_ANALYSEUR: int = 49 
     ACQUISITION_INTERVAL: int = 5      # seconds between samples
@@ -35,7 +36,7 @@ PLOT_CONFIGS = {
     "Flow": {
         "dual": True,
         "cols": ["flowA", "flowB"],
-        "colors": ["#e74c3c", "#c0392b"],
+        "colors": ["#e74c3c", "#3498db"], 
         "title": "Débit",
     },
     "O3 Lamp": {
