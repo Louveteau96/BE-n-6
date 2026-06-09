@@ -50,29 +50,25 @@ class GraphApp:
         self._interval  = interval
         self._acquisition_running = False
 
-        # File mode: load CSV immediately, disable acquisition
-        self._file_mode = csv_path is not None
+        self._file_mode       = csv_path is not None
         self._csv_source_path = csv_path
 
-        # Button references — set in create_interface()
         self._btn_start = None
         self._btn_stop  = None
 
-        # Auto-save state (serial mode only)
         self._autosave_path: str | None = None
-
-        # Pending after() job — kept so we can cancel it on close
         self._poll_after_id = None
 
         if self._file_mode:
-            basename = os.path.basename(csv_path)
-            self.root.title(f"Analyseur Ozone — {basename}  [Lecture seule]")
+            self.root.title(f"Analyseur Ozone — {os.path.basename(csv_path)}  [Lecture seule]")
         else:
             self.root.title("Analyseur Ozone - Temps Réel")
-        self.root.geometry("1250x820")
 
-        self.figures:  dict[str, tuple]             = {}
-        self.canvases: dict[str, FigureCanvasTkAgg] = {}
+        self.root.state("zoomed")
+
+        self.figures:  dict[str, tuple]               = {}
+        self.canvases: dict[str, FigureCanvasTkAgg]   = {}
+        self.toolbars: dict[str, NavigationToolbar2Tk] = {}
 
         os.makedirs(RECORD_DIR, exist_ok=True)
 
@@ -85,54 +81,35 @@ class GraphApp:
 
     # ---- Clean shutdown -------------------------------------------------
     def close(self) -> None:
-        """Cancel the pending poll job so root.destroy() doesn't crash."""
         if self._poll_after_id is not None:
             self.root.after_cancel(self._poll_after_id)
             self._poll_after_id = None
 
     # ---- UI construction ------------------------------------------------
     def create_interface(self) -> None:
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        # ---- Shared bottom bar (toolbar left, buttons right) ------------
+        bottom_bar = ttk.Frame(self.root)
+        bottom_bar.pack(fill="x", side="bottom", padx=10, pady=4)
 
-        for name, config in PLOT_CONFIGS.items():
-            frame = ttk.Frame(self.notebook)
-            self.notebook.add(frame, text=name)
+        # Left side: placeholder that holds the active tab's toolbar
+        self._toolbar_frame = ttk.Frame(bottom_bar)
+        self._toolbar_frame.pack(side="left")
 
-            fig, ax = plt.subplots(figsize=(10, 6))
-            canvas = FigureCanvasTkAgg(fig, master=frame)
-            canvas.get_tk_widget().pack(fill="both", expand=True)
-
-            self.figures[name]  = (fig, ax)
-            self.canvases[name] = canvas
-
-            NavigationToolbar2Tk(canvas, frame).update()
-
-            if config.get("dual"):
-                create_dual_plot(ax, self.df, config)
-            else:
-                create_single_plot(ax, self.df, config)
-            canvas.draw()
-
-        # ---- Bottom button bar ------------------------------------------
-        btn_frame = ttk.Frame(self.root)
-        btn_frame.pack(fill="x", padx=10, pady=8)
+        # Right side: action buttons
+        btn_frame = ttk.Frame(bottom_bar)
+        btn_frame.pack(side="right")
 
         self._status_var = tk.StringVar(
             value="Fichier chargé." if self._file_mode else "En attente de données..."
         )
-        ttk.Label(btn_frame, textvariable=self._status_var,
-                  foreground="gray").pack(side="left")
+        ttk.Label(bottom_bar, textvariable=self._status_var,
+                  foreground="gray").pack(side="left", padx=(12, 0))
 
-        btn_refresh = ttk.Button(
-            btn_frame, text="🔄 Refresh", command=self.refresh_all
-        )
+        btn_refresh = ttk.Button(btn_frame, text="🔄 Refresh", command=self.refresh_all)
         btn_refresh.pack(side="right", padx=(6, 0))
         Tooltip(btn_refresh, "Redessiner tous les graphiques manuellement")
 
-        btn_save = ttk.Button(
-            btn_frame, text="💾 Save as CSV", command=self.save_csv
-        )
+        btn_save = ttk.Button(btn_frame, text="💾 Save as CSV", command=self.save_csv)
         btn_save.pack(side="right", padx=(6, 0))
         Tooltip(btn_save, "Save data in a specified CSV file")
 
@@ -157,6 +134,49 @@ class GraphApp:
                       foreground="#555555",
                       font=("TkDefaultFont", 9)).pack(side="right", padx=(6, 0))
 
+        # ---- Notebook of plots ------------------------------------------
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=(10, 0))
+
+        for name, config in PLOT_CONFIGS.items():
+            frame = ttk.Frame(self.notebook)
+            self.notebook.add(frame, text=name)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+            canvas = FigureCanvasTkAgg(fig, master=frame)
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+
+            self.figures[name]  = (fig, ax)
+            self.canvases[name] = canvas
+
+            # Toolbar lives in the shared toolbar_frame but is hidden until
+            # its tab is selected
+            toolbar = NavigationToolbar2Tk(canvas, self._toolbar_frame)
+            toolbar.update()
+            toolbar.pack_forget()          # hidden by default
+            self.toolbars[name] = toolbar
+
+            if config.get("dual"):
+                create_dual_plot(ax, self.df, config)
+            else:
+                create_single_plot(ax, self.df, config)
+            canvas.draw()
+
+        # Show the first tab's toolbar immediately
+        first = next(iter(self.toolbars))
+        self.toolbars[first].pack(side="left")
+
+        # Switch toolbar when the user changes tab
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_change)
+
+    def _on_tab_change(self, event=None) -> None:
+        selected = self.notebook.tab(self.notebook.select(), "text")
+        for name, toolbar in self.toolbars.items():
+            if name == selected:
+                toolbar.pack(side="left")
+            else:
+                toolbar.pack_forget()
+
     # ---- File mode ------------------------------------------------------
     def _load_file(self, path: str) -> None:
         try:
@@ -175,7 +195,7 @@ class GraphApp:
             messagebox.showerror("Erreur de lecture", f"Impossible de lire le fichier :\n{e}")
             self._status_var.set("❌ Erreur lors du chargement.")
 
-    # ---- Start / stop acquisition (serial mode only) --------------------
+    # ---- Start / stop acquisition ---------------------------------------
     def _start_acquisition(self) -> None:
         if self._acquisition_running:
             return
@@ -202,7 +222,7 @@ class GraphApp:
         self._btn_start.config(state="normal")
         self._status_var.set("Acquisition arrêtée. Cliquez ▶ pour redémarrer.")
 
-    # ---- Queue polling (serial mode only) -------------------------------
+    # ---- Queue polling --------------------------------------------------
     def schedule_poll(self) -> None:
         self._poll_after_id = self.root.after(self.POLL_INTERVAL_MS, self._poll_queue)
 
@@ -225,13 +245,12 @@ class GraphApp:
             )
             if len(self.df) > self.max_points:
                 self.df = self.df.iloc[-self.max_points:].reset_index(drop=True)
-
             self._autosave()
             self.refresh_all()
 
         self.schedule_poll()
 
-    # ---- Auto-save (serial mode only) -----------------------------------
+    # ---- Auto-save ------------------------------------------------------
     def _autosave(self) -> None:
         if self._autosave_path is None:
             filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
@@ -250,7 +269,6 @@ class GraphApp:
                 "Pas de données à sauvegarder.\nLancez l'acquisition d'abord.",
             )
             return
-
         default_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
         path = filedialog.asksaveasfilename(
             title="Sauvegarder les données",

@@ -162,11 +162,12 @@ class SerialHandler:
         if self.thread is not None:
             self.thread.join(timeout=2)
             self.thread = None
+            quit()
         if self.ser is not None and self.ser.is_open:
             try:
                 self.ser.close()
             except Exception:
                 pass
         self._log("CONN", f"Stopped. Total frames enqueued: {self._frame_count}")
-
+        
 
