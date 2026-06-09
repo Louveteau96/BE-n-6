@@ -447,7 +447,7 @@ class GraphApp:
         #    (stop_event.wait(timeout) se réveille immédiatement)
         if self.stop_event is not None:
             self.stop_event.set()
-
+        quit()
         # 3. Ferme la fenêtre
         self.root.destroy()
 
